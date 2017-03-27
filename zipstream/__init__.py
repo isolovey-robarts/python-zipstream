@@ -176,6 +176,15 @@ class ZipFile(zipfile.ZipFile):
         zipfile.ZipFile.__init__(self, fileobj, mode=mode, compression=compression, allowZip64=allowZip64)
         # TODO: Refractor to write queue with args + kwargs matching write()
         self.paths_to_write = []
+        self._total_size_of_files = 0
+        self._total_bytes_processed = 0
+
+    def get_progress(self):
+        """
+        Get information about compression progress.
+        :return: percentage progress
+        """
+        return self._total_bytes_processed / float(self._total_size_of_files) * 100.0
 
     def __iter__(self):
         for kwargs in self.paths_to_write:
@@ -213,6 +222,7 @@ class ZipFile(zipfile.ZipFile):
         #   - if filename is file, write as file
         #   - if filename is directory, write an empty directory
         kwargs = {'filename': filename, 'arcname': arcname, 'compress_type': compress_type}
+        self._total_size_of_files += os.path.getsize(filename)
         self.paths_to_write.append(kwargs)
 
     def write_iter(self, arcname, iterable, compress_type=None):
@@ -295,9 +305,11 @@ class ZipFile(zipfile.ZipFile):
                 zinfo.file_size * 1.05 > ZIP64_LIMIT
         yield self.fp.write(zinfo.FileHeader(zip64))
         file_size = 0
+        processed_before = self._total_bytes_processed
         if filename:
             with open(filename, 'rb') as fp:
                 while 1:
+                    self._total_bytes_processed = processed_before + fp.tell()
                     buf = fp.read(1024 * 8)
                     if not buf:
                         break
